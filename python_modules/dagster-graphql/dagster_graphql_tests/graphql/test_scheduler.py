@@ -22,7 +22,9 @@ GET_SCHEDULES_QUERY = '''
         runningSchedules {
           scheduleDefinition {
             name
-            executionParamsString
+            pipelineName
+            mode
+            solidSubset
             environmentConfigYaml
           }
           runs {
@@ -84,13 +86,16 @@ def test_get_all_schedules():
         assert scheduler_result.data
         assert scheduler_result.data['scheduler']
         assert scheduler_result.data['scheduler']['runningSchedules']
-        assert len(scheduler_result.data['scheduler']['runningSchedules']) == 11
+        assert len(scheduler_result.data['scheduler']['runningSchedules']) == 12
 
         for schedule in scheduler_result.data['scheduler']['runningSchedules']:
-            assert (
-                schedule['scheduleDefinition']['environmentConfigYaml']
-                == 'storage:\n  filesystem: {}\n'
-            )
+            if schedule['scheduleDefinition']['name'] == 'environment_dict_error_schedule':
+                assert schedule['scheduleDefinition']['environmentConfigYaml'] is None
+            else:
+                assert (
+                    schedule['scheduleDefinition']['environmentConfigYaml']
+                    == 'storage:\n  filesystem: {}\n'
+                )
 
 
 def test_scheduler_change_set_adding_schedule():
