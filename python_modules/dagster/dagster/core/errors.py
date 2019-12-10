@@ -343,3 +343,7 @@ class DagsterRunAlreadyExists(DagsterError):
 
 class DagsterRunConflict(DagsterError):
     '''Indicates that a conflicting pipeline run exists in a run storage.'''
+
+
+class ScheduleExecutionError(DagsterUserCodeExecutionError):
+    '''Errors raised during the execution of schedule.'''
