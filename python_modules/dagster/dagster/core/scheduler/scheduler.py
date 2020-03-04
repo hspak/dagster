@@ -7,6 +7,7 @@ import six
 from dagster import check
 from dagster.core.definitions.schedule import ScheduleDefinition, ScheduleDefinitionData
 from dagster.core.serdes import whitelist_for_serdes
+from dagster.utils.error import SerializableErrorInfo
 
 
 @whitelist_for_serdes
@@ -206,3 +207,81 @@ class Schedule(
             python_path=self.python_path,
             repository_path=self.repository_path,
         )
+
+
+@whitelist_for_serdes
+class ScheduleTickStatus(Enum):
+    STARTED = 'STARTED'
+    SKIPPED = 'SKIPPED'
+    SUCCESS = 'SUCCESS'
+    FAILURE = 'FAILURE'
+
+
+@whitelist_for_serdes
+class ScheduleTickSuccessData(namedtuple('_ScheduleTickSuccessData', 'run_id')):
+    def __new__(cls, run_id):
+        return super(ScheduleTickSuccessData, cls).__new__(cls, run_id=check.str_param(run_id, 'run_id'))
+
+
+@whitelist_for_serdes
+class ScheduleTickFailureData(namedtuple('_ScheduleTickFailureData', 'error')):
+    def __new__(cls, error):
+        return super(ScheduleTickFailureData, cls).__new__(
+            cls, error=check.opt_inst_param(error, 'error', SerializableErrorInfo),
+        )
+
+
+def _validate_tick_specific_data(tick_status, tick_specific_data):
+    if tick_status == ScheduleTickStatus.SUCCESS:
+        check.inst_param(tick_specific_data, 'tick_specific_data', ScheduleTickSuccessData)
+    elif tick_status == ScheduleTickStatus.FAILURE:
+        check.inst_param(tick_specific_data, 'tick_specific_data', ScheduleTickFailureData)
+
+    return tick_specific_data
+
+
+@whitelist_for_serdes
+class ScheduleTickData(namedtuple('Schedule', 'schedule_name status tick_specific_data')):
+    def __new__(cls, schedule_name, status, tick_specific_data=None):
+
+        return super(ScheduleTickData, cls).__new__(
+            cls,
+            check.str_param(schedule_name, 'schedule_name'),
+            check.inst_param(status, 'status', ScheduleTickStatus),
+            _validate_tick_specific_data(status, tick_specific_data),
+        )
+
+    def with_status(self, status, tick_specific_data=None):
+        check.inst_param(status, 'status', ScheduleTickStatus)
+        return self._replace(
+            status=status,
+            tick_specific_data=_validate_tick_specific_data(status, tick_specific_data),
+        )
+
+
+class ScheduleTick(namedtuple('Schedule', 'tick_id schedule_tick_data')):
+    def __new__(cls, tick_id, schedule_tick_data):
+
+        return super(ScheduleTick, cls).__new__(
+            cls,
+            check.int_param(tick_id, 'tick_id'),
+            check.inst_param(schedule_tick_data, 'schedule_tick_data', ScheduleTickData),
+        )
+
+    def with_status(self, status, tick_specific_data=None):
+        check.inst_param(status, 'status', ScheduleTickStatus)
+        return self._replace(
+            schedule_tick_data=self.schedule_tick_data.with_status(status, tick_specific_data)
+        )
+
+    @property
+    def schedule_name(self):
+        return self.schedule_tick_data.schedule_name
+
+    @property
+    def status(self):
+        return self.schedule_tick_data.status
+
+    @property
+    def tick_specific_data(self):
+        return self.schedule_tick_data.tick_specific_data

@@ -2,6 +2,11 @@ import pytest
 
 from dagster import DagsterInvariantViolationError, RepositoryDefinition
 from dagster.core.scheduler import Schedule, ScheduleDefinitionData, ScheduleStatus
+from dagster.core.scheduler.scheduler import (
+    ScheduleTickData,
+    ScheduleTickStatus,
+    ScheduleTickSuccessData,
+)
 
 
 class TestScheduleStorage:
@@ -140,3 +145,41 @@ class TestScheduleStorage:
 
         with pytest.raises(DagsterInvariantViolationError):
             storage.add_schedule(repository, schedule)
+
+    def test_create_tick(self, storage):
+        assert storage
+
+        repository = RepositoryDefinition("repository_name")
+        tick = storage.create_schedule_tick(
+            repository, ScheduleTickData("my_schedule", ScheduleTickStatus.STARTED)
+        )
+        assert tick.tick_id == 1
+
+        ticks = storage.get_schedule_ticks_by_schedule(repository, "my_schedule")
+        assert len(ticks) == 1
+        tick = ticks[0]
+        assert tick.tick_id == 1
+        assert tick.schedule_name == "my_schedule"
+        assert tick.status == ScheduleTickStatus.STARTED
+        assert tick.tick_specific_data == None
+
+    def test_update_tick(self, storage):
+        assert storage
+
+        repository = RepositoryDefinition("repository_name")
+        tick = storage.create_schedule_tick(
+            repository, ScheduleTickData("my_schedule", ScheduleTickStatus.STARTED)
+        )
+
+        updated_tick = tick.with_status(ScheduleTickStatus.SUCCESS, ScheduleTickSuccessData(run_id="1234"))
+        assert updated_tick.status == ScheduleTickStatus.SUCCESS
+
+        storage.update_schedule_tick(repository, updated_tick)
+
+        ticks = storage.get_schedule_ticks_by_schedule(repository, "my_schedule")
+        assert len(ticks) == 1
+        tick = ticks[0]
+        assert tick.tick_id == 1
+        assert tick.schedule_name == "my_schedule"
+        assert tick.status == ScheduleTickStatus.SUCCESS
+        assert tick.tick_specific_data.run_id == "1234"
