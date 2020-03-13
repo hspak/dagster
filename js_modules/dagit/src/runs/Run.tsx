@@ -56,6 +56,10 @@ export class Run extends React.Component<IRunProps, IRunState> {
         canCancel
         status
         mode
+        tags {
+          key
+          value
+        }
         pipeline {
           __typename
           ... on PipelineReference {
@@ -146,6 +150,9 @@ export class Run extends React.Component<IRunProps, IRunState> {
       selector: {
         name: run.pipeline.name,
         solidSubset: run.pipeline.solids.map(s => s.name)
+      },
+      executionMetadata: {
+        tags: run.tags.map(tag => ({ value: tag.value, key: tag.key }))
       }
     };
 
