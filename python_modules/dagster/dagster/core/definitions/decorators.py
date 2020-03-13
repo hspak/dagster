@@ -993,7 +993,7 @@ def weekly_schedule(
 
     if execution_day_of_week < 0 or execution_day_of_week >= 7:
         raise DagsterInvalidDefinitionError(
-            "`execution_day_of_week={}` is not valid for weekly schedule. Execution day must be between 0 and 6".format(
+            "`execution_day_of_week={}` is not valid for weekly schedule. Execution day must be between 0 [Sunday] and 6 [Saturday]".format(
                 execution_day_of_week
             )
         )
