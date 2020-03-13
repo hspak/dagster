@@ -1,17 +1,23 @@
 from dagster_graphql import dauphin
 
 from dagster import DagsterType, check
+from dagster.core.meta.pipeline_snapshot import PipelineSnapshot
 from dagster.core.types.dagster_type import DagsterTypeKind
 
 from .config_types import DauphinConfigType, to_dauphin_config_type
 
 
-def config_type_for_schema(schema):
-    return to_dauphin_config_type(schema.schema_type) if schema else None
+def config_type_for_schema(schema, pipeline_snapshot):
+    return (
+        to_dauphin_config_type(schema.schema_type.key, pipeline_snapshot.config_schema_snapshot)
+        if schema
+        else None
+    )
 
 
-def to_dauphin_dagster_type(dagster_type):
+def to_dauphin_dagster_type(dagster_type, pipeline_snapshot):
     check.inst_param(dagster_type, 'dagster_type', DagsterType)
+    check.inst_param(pipeline_snapshot, pipeline_snapshot, PipelineSnapshot)
 
     base_args = dict(
         key=dagster_type.key,
@@ -22,8 +28,12 @@ def to_dauphin_dagster_type(dagster_type):
         is_nullable=dagster_type.kind == DagsterTypeKind.NULLABLE,
         is_list=dagster_type.kind == DagsterTypeKind.LIST,
         is_nothing=dagster_type.kind == DagsterTypeKind.NOTHING,
-        input_schema_type=config_type_for_schema(dagster_type.input_hydration_config),
-        output_schema_type=config_type_for_schema(dagster_type.output_materialization_config),
+        input_schema_type=config_type_for_schema(
+            dagster_type.input_hydration_config, pipeline_snapshot
+        ),
+        output_schema_type=config_type_for_schema(
+            dagster_type.output_materialization_config, pipeline_snapshot
+        ),
         inner_types=_resolve_inner_types(dagster_type),
     )
 
