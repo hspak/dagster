@@ -1,4 +1,70 @@
+import datetime
+from collections import defaultdict
+
+from dagster import PartitionSetDefinition, ScheduleExecutionContext
+from dagster.core.definitions.pipeline import PipelineRunsFilter
 from dagster.core.scheduler import SchedulerHandle
+from dagster.core.storage.pipeline_run import PipelineRunStatus
+from dagster.utils.partitions import date_partition_range
+
+
+def backfilling_partition_selector(
+    context: ScheduleExecutionContext, partition_set_def: PartitionSetDefinition
+):
+    partitions = partition_set_def.get_partitions()
+    if not partitions:
+        return None
+
+    # query runs db for this partition set
+    filters = PipelineRunsFilter(tags={'dagster/partition_set': partition_set_def.name,})
+    partition_set_runs = context.instance.get_runs(filters)
+
+    runs_by_partition = defaultdict(list)
+
+    for run in partition_set_runs:
+        runs_by_partition[run.tags['dagster/partition']].append(run)
+
+    previous_partition_in_flight = False
+    for partition in partitions:
+        runs = runs_by_partition[partition.name]
+
+        # when we find the first empty partition
+        if len(runs) == 0:
+            # execute it the previous one is still not active
+            if not previous_partition_in_flight:
+                return partition
+            # other wise skip this tick, wait for previous to finish
+            else:
+                return None
+
+        # active runs for a given partition may be manual retries or the
+        # current tip of the backfill progression
+        if any([run.status == PipelineRunStatus.STARTED for run in runs]):
+            previous_partition_in_flight = True
+
+        # Other impls would check the runs here and choose to do something if there were only errors for
+        # a given partition, for example throw and stop the backfill schedule from progressing at all
+
+    return None
+
+
+def backfill_test_schedule():
+    # create weekly partion set
+    partition_set = PartitionSetDefinition(
+        name='unreliable_weekly',
+        pipeline_name='unreliable_pipeline',
+        partition_fn=date_partition_range(
+            # first sunday of the year
+            start=datetime.datetime(2020, 1, 5),
+            delta=datetime.timedelta(weeks=1),
+        ),
+        environment_dict_fn_for_partition=lambda _: {'storage': {'filesystem': {}}},
+    )
+    return partition_set.create_schedule_definition(
+        schedule_name='backfill_unreliable_weekly',
+        cron_schedule="* * * * *",  # tick every minute
+        partition_selector=backfilling_partition_selector,
+    )
 
 
 def get_bay_bikes_schedules():
@@ -14,6 +80,7 @@ def get_toys_schedules():
     from dagster import ScheduleDefinition, file_relative_path
 
     return [
+        backfill_test_schedule(),
         ScheduleDefinition(
             name="many_events_every_min",
             cron_schedule="* * * * *",
