@@ -217,7 +217,6 @@ class DauphinPipelineConfigValidationError(dauphin.Interface):
                 path=[],  # TODO: remove
                 stack=error.stack,
                 reason=error.reason,
-                type=error.error_data.config_type,
                 value_rep=error.error_data.value_rep,
             )
         elif isinstance(error.error_data, MissingFieldErrorData):
@@ -281,11 +280,7 @@ class DauphinRuntimeMismatchConfigError(dauphin.ObjectType):
         name = 'RuntimeMismatchConfigError'
         interfaces = (DauphinPipelineConfigValidationError,)
 
-    type = dauphin.NonNull('ConfigType')
     value_rep = dauphin.Field(dauphin.String)
-
-    def resolve_type(self, _info):
-        return to_dauphin_config_type(self.type)
 
 
 class DauphinMissingFieldConfigError(dauphin.ObjectType):
