@@ -114,6 +114,7 @@ RUN set -ex \
     openjdk-8-jdk-headless="$JAVA_DEBIAN_VERSION" \
     openjdk-8-jre-headless="$JAVA_DEBIAN_VERSION" \
     pandoc \
+    postgresql-dev \
     rabbitmq-server \
     rsync \
     ssh \
