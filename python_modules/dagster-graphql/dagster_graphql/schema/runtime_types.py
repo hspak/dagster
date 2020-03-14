@@ -19,9 +19,15 @@ def to_dauphin_dagster_type(pipeline_snapshot, dagster_type):
     check.inst_param(dagster_type, 'dagster_type', DagsterType)
     check.inst_param(pipeline_snapshot, pipeline_snapshot, PipelineSnapshot)
 
+    dagster_type_key = dagster_type.key
+
+    dagster_type_meta = pipeline_snapshot.dagster_type_namespace_snapshot.get_dagster_type_meta(
+        dagster_type_key
+    )
+
     base_args = dict(
-        key=dagster_type.key,
-        name=dagster_type.name,
+        key=dagster_type_meta.key,
+        name=dagster_type_meta.name,
         display_name=dagster_type.display_name,
         description=dagster_type.description,
         is_builtin=dagster_type.is_builtin,
