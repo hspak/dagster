@@ -965,6 +965,7 @@ type ScheduleDefinition {
   cronSchedule: String!
   executionParamsString: String!
   environmentConfigYaml: String!
+  partitionSet: PartitionSet
 }
 
 type ScheduledExecutionBlocked {

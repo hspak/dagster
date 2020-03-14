@@ -15,6 +15,7 @@ from dagster_graphql.schema.errors import (
 
 from dagster import check, seven
 from dagster.core.definitions import ScheduleDefinition, ScheduleExecutionContext
+from dagster.core.definitions.partition import PartitionScheduleDefinition
 from dagster.core.definitions.pipeline import PipelineRunsFilter
 from dagster.core.scheduler import Schedule
 
@@ -48,12 +49,21 @@ class DauphinScheduleDefinition(dauphin.ObjectType):
     cron_schedule = dauphin.NonNull(dauphin.String)
     execution_params_string = dauphin.NonNull(dauphin.String)
     environment_config_yaml = dauphin.NonNull(dauphin.String)
+    partition_set = dauphin.Field('PartitionSet')
 
     def resolve_environment_config_yaml(self, _graphene_info):
         schedule_def = self._schedule_def
         environment_config = schedule_def.get_environment_dict(self._schedule_context)
         environment_config_yaml = yaml.dump(environment_config, default_flow_style=False)
         return environment_config_yaml if environment_config_yaml else ''
+
+    def resolve_partition_set(self, graphene_info):
+        if isinstance(self._schedule_def, PartitionScheduleDefinition):
+            return graphene_info.schema.type_named('PartitionSet')(
+                self._schedule_def.get_partition_set()
+            )
+
+        return None
 
     def __init__(self, graphene_info, schedule_def):
         self._schedule_def = check.inst_param(schedule_def, 'schedule_def', ScheduleDefinition)
