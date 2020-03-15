@@ -34,7 +34,7 @@ export interface SolidTypeSignatureFragment_inputDefinitions {
 }
 
 export interface SolidTypeSignatureFragment {
-  __typename: "SolidDefinition" | "CompositeSolidDefinition";
+  __typename: "CompositeSolidDefinition" | "SolidDefinition";
   outputDefinitions: SolidTypeSignatureFragment_outputDefinitions[];
   inputDefinitions: SolidTypeSignatureFragment_inputDefinitions[];
 }

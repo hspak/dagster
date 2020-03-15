@@ -34,7 +34,7 @@ export interface SolidsRootQuery_usedSolids_definition_inputDefinitions {
 }
 
 export interface SolidsRootQuery_usedSolids_definition {
-  __typename: "SolidDefinition" | "CompositeSolidDefinition";
+  __typename: "CompositeSolidDefinition" | "SolidDefinition";
   name: string;
   outputDefinitions: SolidsRootQuery_usedSolids_definition_outputDefinitions[];
   inputDefinitions: SolidsRootQuery_usedSolids_definition_inputDefinitions[];

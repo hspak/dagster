@@ -1,5 +1,9 @@
-from dagster import InputDefinition, OutputDefinition, solid
-from dagster.core.meta.solid import build_solid_def_meta
+from dagster import InputDefinition, OutputDefinition, composite_solid, solid
+from dagster.core.meta.solid import (
+    CompositeSolidDefMeta,
+    build_composite_solid_def_meta,
+    build_solid_def_meta,
+)
 from dagster.core.serdes import deserialize_json_to_dagster_namedtuple, serialize_dagster_namedtuple
 
 
@@ -15,6 +19,25 @@ def test_basic_solid_definition():
         deserialize_json_to_dagster_namedtuple(serialize_dagster_namedtuple(solid_meta))
         == solid_meta
     )
+
+
+def test_basic_comp_solid_definition():
+    @solid
+    def noop_solid(_):
+        pass
+
+    @composite_solid
+    def comp_solid():
+        noop_solid()
+
+    comp_solid_meta = build_composite_solid_def_meta(comp_solid)
+
+    assert isinstance(comp_solid_meta, CompositeSolidDefMeta)
+    # TODO: enable once we do not need to tuck original definition inside of the meta class
+    # assert (
+    #     deserialize_json_to_dagster_namedtuple(serialize_dagster_namedtuple(comp_solid_meta))
+    #     == comp_solid_meta
+    # )
 
 
 def test_solid_definition_kitchen_sink():

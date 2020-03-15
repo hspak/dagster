@@ -379,7 +379,7 @@ type Input {
 }
 
 type InputDefinition {
-  solidDefinition: SolidDefinition!
+  solidDefinition: ISolidDefinition!
   name: String!
   description: String
   type: RuntimeType!
@@ -588,7 +588,7 @@ type Output {
 }
 
 type OutputDefinition {
-  solidDefinition: SolidDefinition!
+  solidDefinition: ISolidDefinition!
   name: String!
   description: String
   type: RuntimeType!
