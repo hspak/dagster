@@ -83,6 +83,9 @@ def test_solid_def():
         solid_one_solid, solid_one_solid.output_dict['result']
     )
 
+    assert solid_one.config_field
+    assert list(solid_one.config_field.config_type.fields.keys()) == ['another_field']
+
     assert (
         len(pipeline_def.dependency_structure.input_to_upstream_outputs_for_solid('solid_one')) == 1
     )

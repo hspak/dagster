@@ -116,6 +116,10 @@ class ISolidDefinition(six.with_metaclass(ABCMeta)):
     def has_config_entry(self):
         raise NotImplementedError()
 
+    @abstractproperty
+    def config_field(self):
+        raise NotImplementedError()
+
     @abstractmethod
     def iterate_solid_defs(self):
         raise NotImplementedError()
@@ -401,6 +405,10 @@ class CompositeSolidDefinition(ISolidDefinition, IContainSolids):
     @property
     def config_mapping(self):
         return self._config_mapping
+
+    @property
+    def config_field(self):
+        return None if self._config_mapping is None else self._config_mapping.config_field
 
     @property
     def dependencies(self):

@@ -307,6 +307,9 @@ def test_nested_with_inputs():
     assert result.success
     assert result.result_for_solid('pipe').output_value() == 'override.foo - foobar'
 
+    assert outer_wrap.config_field.config_type
+    assert list(outer_wrap.config_field.config_type.fields.keys()) == ['outer_first']
+
 
 def test_wrap_none_config_and_inputs():
     @solid(
