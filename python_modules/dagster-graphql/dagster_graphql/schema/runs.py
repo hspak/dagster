@@ -115,10 +115,12 @@ class DauphinPipelineRun(dauphin.ObjectType):
         return graphene_info.schema.type_named('ComputeLogs')(runId=self.run_id, stepKey=stepKey)
 
     def resolve_executionPlan(self, graphene_info):
+        from dagster_graphql.implementation.fetch_pipelines import get_pipeline_def_from_selector
+
         pipeline = self.resolve_pipeline(graphene_info)
         if isinstance(pipeline, DauphinPipeline):
             execution_plan = create_execution_plan(
-                pipeline.get_dagster_pipeline(),
+                get_pipeline_def_from_selector(graphene_info, self._pipeline_run.selector),
                 self._pipeline_run.environment_dict,
                 RunConfig(mode=self._pipeline_run.mode),
             )
@@ -263,11 +265,13 @@ class DauphinLogMessageConnection(dauphin.ObjectType):
         self._pipeline_run = check.inst_param(pipeline_run, 'pipeline_run', PipelineRun)
 
     def resolve_nodes(self, graphene_info):
+        from dagster_graphql.implementation.fetch_pipelines import get_pipeline_def_from_selector
+
         pipeline = get_pipeline_reference_or_raise(graphene_info, self._pipeline_run.selector)
 
         if isinstance(pipeline, DauphinPipeline):
             execution_plan = create_execution_plan(
-                pipeline.get_dagster_pipeline(),
+                get_pipeline_def_from_selector(graphene_info, self._pipeline_run.selector),
                 self._pipeline_run.environment_dict,
                 RunConfig(mode=self._pipeline_run.mode),
             )
