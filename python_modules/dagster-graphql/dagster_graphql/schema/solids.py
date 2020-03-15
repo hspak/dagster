@@ -4,20 +4,34 @@ from dagster import check
 from dagster.core.definitions import (
     CompositeSolidDefinition,
     IContainSolids,
-    ISolidDefinition,
-    InputDefinition,
-    OutputDefinition,
     Solid,
     SolidDefinition,
     SolidHandle,
     SolidInputHandle,
     SolidOutputHandle,
 )
-from dagster.core.meta.config_types import meta_from_field
 from dagster.core.meta.pipeline_snapshot import PipelineSnapshot
+from dagster.core.meta.solid import (
+    ISolidDefMeta,
+    InputDefMeta,
+    OutputDefMeta,
+    SolidDefMeta,
+    build_composite_solid_def_meta,
+    build_input_def_meta,
+    build_output_def_meta,
+    build_solid_def_meta,
+)
 
 from .config_types import DauphinConfigTypeField
 from .runtime_types import to_dauphin_dagster_type
+
+
+def solid_def_to_meta(i_solid_def):
+    return (
+        build_solid_def_meta(i_solid_def)
+        if isinstance(i_solid_def, SolidDefinition)
+        else build_composite_solid_def_meta(i_solid_def)
+    )
 
 
 class DauphinSolidContainer(dauphin.Interface):
@@ -40,8 +54,10 @@ class DauphinISolidDefinition(dauphin.Interface):
 
 
 class ISolidDefinitionMixin(object):
-    def __init__(self, pipeline_snapshot, solid_def):
-        self._solid_def = check.inst_param(solid_def, 'solid_def', ISolidDefinition)
+    def __init__(self, pipeline_snapshot, i_solid_def_meta):
+        self._i_solid_def_meta = check.inst_param(
+            i_solid_def_meta, 'i_solid_def_meta', ISolidDefMeta
+        )
         self._pipeline_snapshot = check.inst_param(
             pipeline_snapshot, 'pipeline_snapshot', PipelineSnapshot
         )
@@ -49,31 +65,39 @@ class ISolidDefinitionMixin(object):
     def resolve_metadata(self, graphene_info):
         return [
             graphene_info.schema.type_named('MetadataItemDefinition')(key=item[0], value=item[1])
-            for item in self._solid_def.tags.items()
+            for item in self._i_solid_def_meta.tags.items()
         ]
 
     def resolve_input_definitions(self, _):
         return [
-            DauphinInputDefinition(self._pipeline_snapshot, input_definition, self)
-            for input_definition in self._solid_def.input_defs
+            DauphinInputDefinition(
+                pipeline_snapshot=self._pipeline_snapshot,
+                input_def_meta=input_def_meta,
+                i_solid_def_meta=self._i_solid_def_meta,
+            )
+            for input_def_meta in self._i_solid_def_meta.input_def_metas
         ]
 
     def resolve_output_definitions(self, _):
         return [
-            DauphinOutputDefinition(self._pipeline_snapshot, output_definition, self)
-            for output_definition in self._solid_def.output_defs
+            DauphinOutputDefinition(
+                pipeline_snapshot=self._pipeline_snapshot,
+                output_def_meta=output_def_meta,
+                i_solid_def_meta=self._i_solid_def_meta,
+            )
+            for output_def_meta in self._solid_def_meta.output_def_metas
         ]
 
     def resolve_required_resources(self, graphene_info):
         return [
             graphene_info.schema.type_named('ResourceRequirement')(key)
-            for key in self._solid_def.required_resource_keys
+            for key in self._solid_def_meta.required_resource_keys
         ]
 
 
 def build_dauphin_solid_definition(pipeline_snapshot, solid_definition):
     if isinstance(solid_definition, SolidDefinition):
-        return DauphinSolidDefinition(pipeline_snapshot, solid_definition)
+        return DauphinSolidDefinition(pipeline_snapshot, solid_def_to_meta(solid_definition))
 
     if isinstance(solid_definition, CompositeSolidDefinition):
         return DauphinCompositeSolidDefinition(pipeline_snapshot, solid_definition)
@@ -117,6 +141,9 @@ class DauphinSolid(dauphin.ObjectType):
         else:
             self.depended_by = {}
 
+    def get_dagster_definition(self):
+        return self._solid.definition
+
     def resolve_definition(self, _):
         return build_dauphin_solid_definition(self._pipeline_snapshot, self._solid.definition)
 
@@ -140,20 +167,20 @@ class DauphinSolidDefinition(dauphin.ObjectType, ISolidDefinitionMixin):
 
     config_field = dauphin.Field('ConfigTypeField')
 
-    def __init__(self, pipeline_snapshot, solid_def):
-        check.inst_param(solid_def, 'solid_def', SolidDefinition)
+    def __init__(self, pipeline_snapshot, solid_def_meta):
+        self._solid_def_meta = check.inst_param(solid_def_meta, 'solid_def_meta', SolidDefMeta)
         super(DauphinSolidDefinition, self).__init__(
-            name=solid_def.name, description=solid_def.description
+            name=solid_def_meta.name, description=solid_def_meta.description
         )
-        ISolidDefinitionMixin.__init__(self, pipeline_snapshot, solid_def)
+        ISolidDefinitionMixin.__init__(self, pipeline_snapshot, solid_def_meta)
 
     def resolve_config_field(self, _):
         return (
             DauphinConfigTypeField(
                 config_schema_snapshot=self._pipeline_snapshot.config_schema_snapshot,
-                field_meta=meta_from_field('config', self._solid_def.config_field),
+                field_meta=self._solid_def_meta.config_field_meta,
             )
-            if self._solid_def.config_field
+            if self._solid_def_meta.config_field_meta
             else None
         )
 
@@ -172,7 +199,9 @@ class DauphinCompositeSolidDefinition(dauphin.ObjectType, ISolidDefinitionMixin)
         super(DauphinCompositeSolidDefinition, self).__init__(
             name=solid_def.name, description=solid_def.description
         )
-        ISolidDefinitionMixin.__init__(self, pipeline_snapshot, solid_def)
+        self._composite_solid_def_meta = build_composite_solid_def_meta(solid_def)
+        ISolidDefinitionMixin.__init__(self, pipeline_snapshot, self._composite_solid_def_meta)
+        self._solid_def = solid_def
 
     def resolve_solids(self, _graphene_info):
         return build_dauphin_solids(self._solid_def, self._pipeline_snapshot.config_schema_snapshot)
@@ -184,7 +213,9 @@ class DauphinCompositeSolidDefinition(dauphin.ObjectType, ISolidDefinitionMixin)
             mappings.append(
                 DauphinOutputMapping(
                     DauphinOutputDefinition(
-                        self._pipeline_snapshot, mapping.definition, self._solid_def,
+                        pipeline_snapshot=self._pipeline_snapshot,
+                        output_def_meta=build_output_def_meta(mapping.definition),
+                        i_solid_def_meta=self._composite_solid_def_meta,
                     ),
                     DauphinOutput(
                         self._pipeline_snapshot,
@@ -202,7 +233,9 @@ class DauphinCompositeSolidDefinition(dauphin.ObjectType, ISolidDefinitionMixin)
             mappings.append(
                 graphene_info.schema.type_named('InputMapping')(
                     DauphinInputDefinition(
-                        self._pipeline_snapshot, mapping.definition, self._solid_def,
+                        self._pipeline_snapshot,
+                        build_input_def_meta(mapping.definition),
+                        self._composite_solid_def_meta,
                     ),
                     DauphinInput(
                         self._pipeline_snapshot,
@@ -228,11 +261,19 @@ class DauphinSolidHandle(dauphin.ObjectType):
         self.parent = check.opt_inst_param(parent, 'parent', DauphinSolidHandle)
 
 
+def build_dauphin_def_from_meta(pipeline_snapshot, i_solid_def_meta):
+    return (
+        DauphinSolidDefinition(pipeline_snapshot, i_solid_def_meta)
+        if isinstance(i_solid_def_meta, SolidDefMeta)
+        else DauphinCompositeSolidDefinition(pipeline_snapshot, i_solid_def_meta.original_def)
+    )
+
+
 class DauphinInputDefinition(dauphin.ObjectType):
     class Meta(object):
         name = 'InputDefinition'
 
-    solid_definition = dauphin.NonNull('SolidDefinition')
+    solid_definition = dauphin.NonNull('ISolidDefinition')
     name = dauphin.NonNull(dauphin.String)
     description = dauphin.String()
     type = dauphin.NonNull('RuntimeType')
@@ -240,23 +281,22 @@ class DauphinInputDefinition(dauphin.ObjectType):
     # inputs - ?
 
     def __init__(
-        self, pipeline_snapshot, input_definition, solid_def,
+        self, pipeline_snapshot, input_def_meta, i_solid_def_meta,
     ):
-        super(DauphinInputDefinition, self).__init__(
-            name=input_definition.name,
-            description=input_definition.description,
-            solid_definition=solid_def,
-        )
-        self._input_definition = check.inst_param(
-            input_definition, 'input_definition', InputDefinition
-        )
         self._pipeline_snapshot = check.inst_param(
             pipeline_snapshot, 'pipeline_snapshot', PipelineSnapshot
+        )
+        self._input_def_meta = check.inst_param(input_def_meta, 'input_def_meta', InputDefMeta)
+        check.inst_param(i_solid_def_meta, 'i_solid_def_meta', ISolidDefMeta)
+        super(DauphinInputDefinition, self).__init__(
+            name=input_def_meta.name,
+            description=input_def_meta.description,
+            solid_definition=build_dauphin_def_from_meta(pipeline_snapshot, i_solid_def_meta),
         )
 
     def resolve_type(self, _graphene_info):
         return to_dauphin_dagster_type(
-            self._pipeline_snapshot, self._input_definition.dagster_type.key
+            self._pipeline_snapshot, self._input_def_meta.dagster_type_key
         )
 
 
@@ -272,24 +312,22 @@ class DauphinOutputDefinition(dauphin.ObjectType):
     # outputs - ?
 
     def __init__(
-        self, pipeline_snapshot, output_definition, solid_def,
+        self, pipeline_snapshot, output_def_meta, i_solid_def_meta,
     ):
-        self._output_definition = check.inst_param(
-            output_definition, 'output_definition', OutputDefinition
-        )
         self._pipeline_snapshot = check.inst_param(
             pipeline_snapshot, 'pipeline_snapshot', PipelineSnapshot
         )
+        self._output_def_meta = check.inst_param(output_def_meta, 'output_def_meta', OutputDefMeta)
 
         super(DauphinOutputDefinition, self).__init__(
-            name=output_definition.name,
-            description=output_definition.description,
-            solid_definition=solid_def,
+            name=output_def_meta.name,
+            description=output_def_meta.description,
+            solid_definition=build_dauphin_def_from_meta(pipeline_snapshot, i_solid_def_meta),
         )
 
     def resolve_type(self, _graphene_info):
         return to_dauphin_dagster_type(
-            self._pipeline_snapshot, self._output_definition.dagster_type.key,
+            self._pipeline_snapshot, self._output_def_meta.dagster_type_key,
         )
 
 
@@ -309,11 +347,11 @@ class DauphinInput(dauphin.ObjectType):
         )
         super(DauphinInput, self).__init__(solid=solid)
 
-    def resolve_definition(self, graphene_info):
+    def resolve_definition(self, _):
         return DauphinInputDefinition(
-            self._pipeline_snapshot,
-            self._input_handle.input_def,
-            self._solid.resolve_definition(graphene_info),
+            pipeline_snapshot=self._pipeline_snapshot,
+            input_def_meta=build_input_def_meta(self._input_handle.input_def),
+            i_solid_def_meta=solid_def_to_meta(self._solid.get_dagster_definition()),
         )
 
     def resolve_depends_on(self, _):
@@ -343,11 +381,11 @@ class DauphinOutput(dauphin.ObjectType):
         self._output_handle = check.inst_param(output_handle, 'output_handle', SolidOutputHandle)
         super(DauphinOutput, self).__init__(solid=solid)
 
-    def resolve_definition(self, graphene_info):
+    def resolve_definition(self, _):
         return DauphinOutputDefinition(
-            self._pipeline_snapshot,
-            self._output_handle.output_def,
-            self._solid.resolve_definition(graphene_info),
+            pipeline_snapshot=self._pipeline_snapshot,
+            output_def_meta=build_output_def_meta(self._output_handle.output_def),
+            i_solid_def_meta=solid_def_to_meta(self._solid.get_dagster_definition()),
         )
 
     def resolve_depended_by(self, _):
